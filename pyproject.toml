@@ -1,0 +1,11 @@
+[project]
+name = "strands-agents-a2a"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "google-adk>=1.8.0",
+    "langchain>=0.3.26",
+    "strands-agents[a2a]>=1.0.1",
+]
