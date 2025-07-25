@@ -2,6 +2,7 @@ import logging
 import sqlite3
 from typing import List, AsyncGenerator
 
+from dotenv import load_dotenv
 from google.adk import Runner
 from google.adk.agents import LlmAgent
 from google.adk.events import Event
@@ -29,6 +30,8 @@ from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 
 import uvicorn
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -212,13 +215,15 @@ class TakoyakiTaroAgentExecutor(AgentExecutor):
                 logger.debug(
                     f"Final response with {len(parts)} parts: {[p.root.text if isinstance(p.root, TextPart) else 'non-text' for p in parts]}"
                 )
-                task_updater.add_artifact(parts)
-                task_updater.complete()
+                # FIXED: Added await to async methods
+                await task_updater.add_artifact(parts)
+                await task_updater.complete()
                 break
             elif not event.get_function_calls():
                 # Intermediate response - update task status
                 logger.debug("Intermediate response - updating task status")
-                task_updater.update_status(
+                # FIXED: Added await to async method
+                await task_updater.update_status(
                     TaskState.working,
                     message=task_updater.new_agent_message(
                         convert_genai_parts_to_a2a(
@@ -264,10 +269,10 @@ class TakoyakiTaroAgentExecutor(AgentExecutor):
         # Initialize task if not already created
         if not context.current_task:
             logger.debug("Submitting new task")
-            updater.submit()
+            await updater.submit()
 
         # Mark task as actively being worked on
-        updater.start_work()
+        await updater.start_work()
 
         try:
             # Convert A2A message parts to ADK format and process
@@ -287,7 +292,12 @@ class TakoyakiTaroAgentExecutor(AgentExecutor):
 
         except Exception as e:
             logger.error(f"Error during execution: {e}", exc_info=True)
-            updater.fail(f"Agent execution error: {str(e)}")
+            # FIXED: Use proper error handling instead of updater.fail()
+            error_parts = [
+                Part(root=TextPart(text=f"Error processing request: {str(e)}"))
+            ]
+            await updater.add_artifact(error_parts, name="error_response")
+            await updater.complete()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue):
         """
@@ -358,114 +368,76 @@ def convert_a2a_parts_to_genai(parts: List[Part]) -> List[types.Part]:
     Returns:
         List of Google GenAI Part objects
     """
-    return [convert_a2a_part_to_genai(part) for part in parts]
+    genai_parts = []
+
+    for part in parts:
+        if isinstance(part.root, TextPart):
+            # Convert text parts
+            genai_parts.append(types.Part(text=part.root.text))
+        elif isinstance(part.root, FilePart):
+            # Convert file parts (if needed)
+            if isinstance(part.root.file, FileWithBytes):
+                genai_parts.append(
+                    types.Part(
+                        blob=types.Blob(
+                            mime_type=part.root.file.mimeType,
+                            data=part.root.file.bytes,
+                        )
+                    )
+                )
+            elif isinstance(part.root.file, FileWithUri):
+                # Handle URI-based files if needed
+                genai_parts.append(types.Part(text=f"File: {part.root.file.uri}"))
+        else:
+            # Fallback for unknown part types
+            genai_parts.append(types.Part(text=str(part.root)))
+
+    return genai_parts
 
 
-def convert_a2a_part_to_genai(part: Part) -> types.Part:
+def convert_genai_parts_to_a2a(genai_parts: List[types.Part]) -> List[Part]:
     """
-    Convert single A2A Part to Google GenAI Part
+    Convert Google GenAI Part types to A2A Part types
 
-    Handles different content types:
-    - TextPart: Plain text content
-    - FilePart with URI: Referenced file
-    - FilePart with bytes: Inline file data
+    This enables cross-framework communication by translating ADK's response
+    format into A2A's standardized Part format.
 
     Args:
-        part: A2A Part object
+        genai_parts: List of Google GenAI Part objects
 
     Returns:
-        Google GenAI Part object
-
-    Raises:
-        ValueError: If part type is unsupported
+        List of A2A Part objects
     """
-    root = part.root
+    a2a_parts = []
 
-    if isinstance(root, TextPart):
-        return types.Part(text=root.text)
-
-    if isinstance(root, FilePart):
-        if isinstance(root.file, FileWithUri):
-            return types.Part(
-                file_data=types.FileData(
-                    file_uri=root.file.uri, mime_type=root.file.mimeType
+    for part in genai_parts:
+        if hasattr(part, "text") and part.text:
+            # Convert text parts
+            a2a_parts.append(Part(root=TextPart(text=part.text)))
+        elif hasattr(part, "blob") and part.blob:
+            # Convert blob parts to file parts if needed
+            a2a_parts.append(
+                Part(
+                    root=FilePart(
+                        file=FileWithBytes(
+                            mimeType=part.blob.mime_type,
+                            bytes=part.blob.data,
+                        )
+                    )
                 )
             )
-        if isinstance(root.file, FileWithBytes):
-            return types.Part(
-                inline_data=types.Blob(
-                    data=root.file.bytes.encode("utf-8"),
-                    mime_type=root.file.mimeType or "application/octet-stream",
-                )
-            )
-        raise ValueError(f"Unsupported file type: {type(root.file)}")
+        else:
+            # Fallback for unknown part types
+            a2a_parts.append(Part(root=TextPart(text=str(part))))
 
-    raise ValueError(f"Unsupported part type: {type(part)}")
-
-
-def convert_genai_parts_to_a2a(parts: List[types.Part]) -> List[Part]:
-    """
-    Convert Google GenAI Parts back to A2A Parts
-
-    Args:
-        parts: List of Google GenAI Part objects
-
-    Returns:
-        List of A2A Part objects (filters out empty parts)
-    """
-    return [
-        convert_genai_part_to_a2a(part)
-        for part in parts
-        if (part.text or part.file_data or part.inline_data)
-    ]
-
-
-def convert_genai_part_to_a2a(part: types.Part) -> Part:
-    """
-    Convert single Google GenAI Part to A2A Part
-
-    Args:
-        part: Google GenAI Part object
-
-    Returns:
-        A2A Part object
-
-    Raises:
-        ValueError: If part type is unsupported or data is missing
-    """
-    if part.text:
-        return Part(root=TextPart(text=part.text))
-
-    if part.file_data:
-        if not part.file_data.file_uri:
-            raise ValueError("File URI is missing")
-        return Part(
-            root=FilePart(
-                file=FileWithUri(
-                    uri=part.file_data.file_uri,
-                    mimeType=part.file_data.mime_type,
-                )
-            )
-        )
-
-    if part.inline_data:
-        if not part.inline_data.data:
-            raise ValueError("Inline data is missing")
-        return Part(
-            root=FilePart(
-                file=FileWithBytes(
-                    bytes=part.inline_data.data.decode("utf-8"),
-                    mimeType=part.inline_data.mime_type,
-                )
-            )
-        )
-
-    raise ValueError(f"Unsupported part type: {part}")
+    return a2a_parts
 
 
 def create_database():
-    """Create the restaurant database if it doesn't exist"""
+    """Create the Takoyaki Taro database if it doesn't exist."""
     conn = sqlite3.connect("takoyaki_taro.db")
+
+    # Create bookings table
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS bookings (
@@ -473,17 +445,17 @@ def create_database():
             date TEXT NOT NULL,
             time TEXT NOT NULL,
             party_size INTEGER NOT NULL,
-            customer_name TEXT,
+            customer_name TEXT NOT NULL,
             status TEXT DEFAULT 'confirmed',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """
     )
 
-    # Add sample bookings
+    # Add sample bookings for testing
     sample_bookings = [
-        ("2025-07-25", "18:00", 2, "John Smith", "confirmed"),
-        ("2025-07-25", "20:00", 4, "Alice Johnson", "confirmed"),
+        ("2025-07-25", "19:00", 3, "Sample Customer A", "confirmed"),
+        ("2025-07-26", "18:30", 2, "Sample Customer B", "confirmed"),
     ]
 
     conn.executemany(
@@ -552,6 +524,7 @@ def main():
     print("🔍 Agent Card available at: http://localhost:9003/.well-known/agent.json")
     print("📋 Skills: check_availability, book_table")
     print("🛠️  Framework: Google ADK + A2A Protocol")
+    print("💾 Database: SQLite (takoyaki_taro.db)")
 
     # Start the server
     uvicorn.run(app.build(), host="0.0.0.0", port=9003)

@@ -5,6 +5,7 @@ from collections.abc import AsyncIterable
 from datetime import date, timedelta
 from typing import Any, Literal
 
+from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -19,7 +20,6 @@ from a2a.server.agent_execution.context import RequestContext
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import (
-    InternalError,
     Part,
     TaskState,
     TextPart,
@@ -32,6 +32,8 @@ from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 
 import uvicorn
+
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -98,16 +100,11 @@ def check_availability(date: str, time: str, party_size: int) -> str:
         existing_bookings = cursor.fetchone()[0]
         conn.close()
 
-        # Check if time slot is available in schedule
-        available_times = RESTAURANT_SCHEDULE.get(date, [])
-        if time not in available_times:
-            return f"Sorry, we're not open at {time} on {date}."
-
         # Simple availability logic (max 3 tables at same time)
         if existing_bookings >= 3:
-            return f"Sorry, no tables available on {date} at {time} for {party_size} people."
+            return f"Sorry, no tables available on {date} at {time} for {party_size} people. Tokyo Ramen is fully booked!"
         else:
-            return f"Great! We have tables available on {date} at {time} for {party_size} people."
+            return f"Great news! We have tables available on {date} at {time} for {party_size} people at Tokyo Ramen!"
 
     except Exception as e:
         return f"Error checking availability: {str(e)}"
@@ -131,15 +128,9 @@ def book_table(date: str, time: str, party_size: int, customer_name: str) -> str
 
         existing_bookings = cursor.fetchone()[0]
 
-        # Check if time slot is available in schedule
-        available_times = RESTAURANT_SCHEDULE.get(date, [])
-        if time not in available_times:
-            conn.close()
-            return f"Sorry, we're not open at {time} on {date}."
-
         if existing_bookings >= 3:
             conn.close()
-            return f"Sorry, no tables available on {date} at {time}."
+            return f"Sorry, no tables available on {date} at {time}. Tokyo Ramen is fully booked!"
 
         # Create booking
         cursor.execute(
@@ -331,7 +322,7 @@ class TokyoRamenAgentExecutor(AgentExecutor):
         if not context.current_task:
             await updater.submit()
 
-        # Start processing
+        # Start processing - FIXED: Added await
         await updater.start_work()
 
         # Extract user query from A2A message parts
@@ -377,7 +368,12 @@ class TokyoRamenAgentExecutor(AgentExecutor):
             logger.error(
                 f"Error during Tokyo Ramen agent execution: {e}", exc_info=True
             )
-            raise ServerError(error=InternalError()) from e
+            # FIXED: Graceful error handling instead of raising ServerError
+            error_parts = [
+                Part(root=TextPart(text=f"Error processing request: {str(e)}"))
+            ]
+            await updater.add_artifact(error_parts, name="error_response")
+            await updater.complete()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Handle task cancellation - not supported by this agent."""

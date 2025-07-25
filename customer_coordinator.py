@@ -16,7 +16,7 @@ class RestaurantBookingCoordinator:
             "Tokyo Ramen": "http://localhost:9002",
             "Takoyaki Taro": "http://localhost:9003",
         }
-        self.timeout = 30
+        self.timeout = 60
 
     async def discover_restaurants(self):
         """Discover available restaurant agents via A2A protocol"""
@@ -61,16 +61,61 @@ class RestaurantBookingCoordinator:
 
                 response = await client.send_message(request)
 
-                # Extract response text from A2A response
-                if response.result and "message" in response.result:
-                    message_parts = response.result["message"].get("parts", [])
-                    response_text = ""
-                    for part in message_parts:
-                        if part.get("kind") == "text":
-                            response_text += part.get("text", "")
-                    return response_text
+                # Debug logging for troubleshooting
+                logger.debug(f"Response type: {type(response)}")
+                logger.debug(f"Response: {response}")
 
-                return "No response received"
+                # CORRECT: Use the new A2A SDK response structure
+                # Access via response.root (new SDK pattern)
+                if hasattr(response, "root") and response.root:
+                    # Check if it's a success response
+                    if hasattr(response.root, "result"):
+                        result = response.root.result
+
+                        # If result is a Task, we might need to get final result differently
+                        if hasattr(result, "artifacts") and result.artifacts:
+                            # Extract text from artifacts
+                            response_parts = []
+                            for artifact in result.artifacts:
+                                if hasattr(artifact, "parts"):
+                                    for part in artifact.parts:
+                                        if hasattr(part, "root") and hasattr(
+                                            part.root, "text"
+                                        ):
+                                            response_parts.append(part.root.text)
+                            return (
+                                "".join(response_parts)
+                                if response_parts
+                                else str(result)
+                            )
+
+                        # If result is a Message directly
+                        elif hasattr(result, "parts"):
+                            response_parts = []
+                            for part in result.parts:
+                                if hasattr(part, "root") and hasattr(part.root, "text"):
+                                    response_parts.append(part.root.text)
+                                elif hasattr(part, "text"):
+                                    response_parts.append(part.text)
+                            return (
+                                "".join(response_parts)
+                                if response_parts
+                                else str(result)
+                            )
+
+                        # Fallback to string representation
+                        else:
+                            return str(result)
+
+                    # If no result, try to get error info
+                    elif hasattr(response.root, "error"):
+                        return f"Agent error: {response.root.error}"
+                    else:
+                        return str(response.root)
+
+                # Fallback for unexpected response structure
+                else:
+                    return f"Unexpected response format: {str(response)}"
 
         except Exception as e:
             logger.error(f"Error querying restaurant: {e}")
