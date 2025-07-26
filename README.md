@@ -16,23 +16,25 @@ The system demonstrates true cross-framework agent communication:
 
 ### **2-1. Architecture & Key Concepts**
 Step1: Agent Discovery
+
 <img width="823" height="391" alt="Image" src="https://github.com/user-attachments/assets/0e11fef0-7561-4c45-887b-e9130ccd912e" />
 
 Step2: Task Execution
+
 <img width="829" height="400" alt="Image" src="https://github.com/user-attachments/assets/c6f52818-2700-4d19-b2ac-f4e43b29d3e7" />
 
 **Agent Cards**: Self-describing metadata that agents expose at `/.well-known/agent.json`:
 ```json
-    agent_card = AgentCard(
-        name="Tokyo Ramen Restaurant Agent",
-        description="Restaurant booking agent for Tokyo Ramen, fast casual Japanese ramen",
-        url="http://localhost:9002",
-        version="1.0.0",
-        defaultInputModes=["text"],
-        defaultOutputModes=["text"],
-        capabilities=AgentCapabilities(streaming=True),  # Support streaming
-        skills=[check_skill, book_skill],
-    )
+agent_card = AgentCard(
+    name="Tokyo Ramen Restaurant Agent",
+    description="Restaurant booking agent for Tokyo Ramen, fast casual Japanese ramen",
+    url="http://localhost:9002",
+    version="1.0.0",
+    defaultInputModes=["text"],
+    defaultOutputModes=["text"],
+    capabilities=AgentCapabilities(streaming=True),  # Support streaming
+    skills=[check_skill, book_skill],
+)
 ```
 
 **Agent Executor**: The runtime component that:
