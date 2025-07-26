@@ -16,6 +16,8 @@ The system demonstrates true cross-framework agent communication:
 
 ### **2-1. Architecture & Key Concepts**
 
+<img width="549" height="520" alt="Image" src="https://github.com/user-attachments/assets/7776d750-7186-4bd7-acc6-dd49169b7a99" />
+
 **Agent Cards**: Self-describing metadata that agents expose at `/.well-known/agent.json`:
 ```json
 {
@@ -45,7 +47,7 @@ The system demonstrates true cross-framework agent communication:
 - Standard HTTP status codes for error handling
 - JSON payload format for cross-platform compatibility
 
-**Agent Registry**: While not centralized, agents discover each other through:
+**Agent Registry**: Agents discover each other through:
 - Known endpoint URLs (as in this demo)
 - Service discovery mechanisms
 - Agent card metadata exchange
