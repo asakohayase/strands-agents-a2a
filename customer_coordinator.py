@@ -2,6 +2,8 @@ import asyncio
 import logging
 from uuid import uuid4
 import httpx
+import json
+from strands import Agent, tool
 from a2a.client import A2ACardResolver, A2AClient
 from a2a.types import MessageSendParams, SendMessageRequest
 
@@ -17,6 +19,12 @@ class RestaurantBookingCoordinator:
             "Takoyaki Taro": "http://localhost:9003",
         }
         self.timeout = 60
+        self.agent = Agent(
+            name="Restaurant Booking Coordinator",
+            description="Coordinates restaurant bookings and parses user requests",
+            tools=[],
+            callback_handler=None,
+        )
 
     async def discover_restaurants(self):
         """Discover available restaurant agents via A2A protocol"""
@@ -65,57 +73,42 @@ class RestaurantBookingCoordinator:
                 logger.debug(f"Response type: {type(response)}")
                 logger.debug(f"Response: {response}")
 
-                # CORRECT: Use the new A2A SDK response structure
-                # Access via response.root (new SDK pattern)
+                # Extract message from response
                 if hasattr(response, "root") and response.root:
-                    # Check if it's a success response
-                    if hasattr(response.root, "result"):
-                        result = response.root.result
-
-                        # If result is a Task, we might need to get final result differently
-                        if hasattr(result, "artifacts") and result.artifacts:
-                            # Extract text from artifacts
+                    result = response.root.result
+                    
+                    # Check if it's a Task with status message
+                    if hasattr(result, "status") and hasattr(result.status, "message"):
+                        message = result.status.message
+                        if hasattr(message, "parts"):
                             response_parts = []
-                            for artifact in result.artifacts:
-                                if hasattr(artifact, "parts"):
-                                    for part in artifact.parts:
-                                        if hasattr(part, "root") and hasattr(
-                                            part.root, "text"
-                                        ):
-                                            response_parts.append(part.root.text)
-                            return (
-                                "".join(response_parts)
-                                if response_parts
-                                else str(result)
-                            )
-
-                        # If result is a Message directly
-                        elif hasattr(result, "parts"):
-                            response_parts = []
-                            for part in result.parts:
+                            for part in message.parts:
                                 if hasattr(part, "root") and hasattr(part.root, "text"):
                                     response_parts.append(part.root.text)
-                                elif hasattr(part, "text"):
-                                    response_parts.append(part.text)
-                            return (
-                                "".join(response_parts)
-                                if response_parts
-                                else str(result)
-                            )
-
-                        # Fallback to string representation
-                        else:
-                            return str(result)
-
-                    # If no result, try to get error info
-                    elif hasattr(response.root, "error"):
-                        return f"Agent error: {response.root.error}"
-                    else:
-                        return str(response.root)
-
-                # Fallback for unexpected response structure
-                else:
-                    return f"Unexpected response format: {str(response)}"
+                            if response_parts:
+                                return "".join(response_parts)
+                    
+                    # Check for artifacts
+                    if hasattr(result, "artifacts") and result.artifacts:
+                        response_parts = []
+                        for artifact in result.artifacts:
+                            if hasattr(artifact, "parts"):
+                                for part in artifact.parts:
+                                    if hasattr(part, "root") and hasattr(part.root, "text"):
+                                        response_parts.append(part.root.text)
+                        if response_parts:
+                            return "".join(response_parts)
+                    
+                    # Check for direct message parts
+                    if hasattr(result, "parts"):
+                        response_parts = []
+                        for part in result.parts:
+                            if hasattr(part, "root") and hasattr(part.root, "text"):
+                                response_parts.append(part.root.text)
+                        if response_parts:
+                            return "".join(response_parts)
+                
+                return str(response)
 
         except Exception as e:
             logger.error(f"Error querying restaurant: {e}")
@@ -161,6 +154,66 @@ class RestaurantBookingCoordinator:
         print(f"  ✅ Booking response received")
 
         return response
+
+    async def parse_natural_language(self, user_input):
+        """Use coordinator's LLM to parse natural language input"""
+        prompt = f"""Parse this restaurant booking request and return ONLY a JSON object:
+{{
+  "intent": "check" or "book" or "cancel",
+  "restaurant": one of ["Sushi Maru", "Tokyo Ramen", "Takoyaki Taro"] or null,
+  "date": "YYYY-MM-DD" format or null,
+  "time": "HH:MM" in 24-hour format (convert AM/PM: 7:00 PM = 19:00, 7:00 AM = 07:00) or null,
+  "party_size": number or null,
+  "customer_name": string or null
+}}
+
+User request: "{user_input}"
+
+IMPORTANT: Convert all times to 24-hour format. Examples:
+- "7:00 PM" → "19:00"
+- "7:00 AM" → "07:00"
+- "12:30 PM" → "12:30"
+- "12:30 AM" → "00:30"
+
+Return only valid JSON, no other text."""
+        
+        try:
+            response = await self.agent.invoke_async(prompt)
+            # Convert AgentResult to string
+            response_text = str(response)
+            # Extract JSON from response
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                json_str = response_text[json_start:json_end]
+                parsed = json.loads(json_str)
+                
+                # Fix time conversion if needed
+                if parsed.get('time'):
+                    import re
+                    # Check if original input had PM/AM that wasn't converted properly
+                    if 'pm' in user_input.lower() or 'p.m.' in user_input.lower():
+                        time_match = re.search(r'(\d{1,2}):(\d{2})\s*(?:pm|p\.m\.)', user_input.lower())
+                        if time_match:
+                            hour = int(time_match.group(1))
+                            minute = time_match.group(2)
+                            if hour != 12:
+                                hour += 12
+                            parsed['time'] = f"{hour:02d}:{minute}"
+                    elif 'am' in user_input.lower() or 'a.m.' in user_input.lower():
+                        time_match = re.search(r'(\d{1,2}):(\d{2})\s*(?:am|a\.m\.)', user_input.lower())
+                        if time_match:
+                            hour = int(time_match.group(1))
+                            minute = time_match.group(2)
+                            if hour == 12:
+                                hour = 0
+                            parsed['time'] = f"{hour:02d}:{minute}"
+                
+                return parsed
+        except Exception as e:
+            logger.error(f"LLM parsing failed: {e}")
+        
+        return None
 
 
 async def main():
@@ -215,53 +268,75 @@ async def main():
     # Interactive mode
     print("\n\n🎯 INTERACTIVE MODE")
     print("=" * 60)
-    print("Commands:")
-    print("  check YYYY-MM-DD HH:MM party_size")
-    print("  book RestaurantName YYYY-MM-DD HH:MM party_size CustomerName")
-    print("  quit")
+    print("Natural language examples:")
+    print("  'Check availability for 4 people on 2025-07-25 at 19:00'")
+    print("  'Book a table at Sushi Maru for 2 people on 2025-07-25 at 20:00 for John Smith'")
+    print("  'Is Tokyo Ramen available for 6 guests on 2025-07-26 at 18:30?'")
+    print("  'Make a reservation at Takoyaki Taro for 3 people on 2025-07-27 at 19:15 under Jane Doe'")
+    print("  'Cancel booking at Sushi Maru for John Smith on 2025-07-25 at 20:00'")
+    print("  'quit' to exit")
     print()
-
+    
     while True:
         try:
-            user_input = input("👤 Command: ").strip()
-
+            user_input = input("👤 Request: ").strip()
+            
             if user_input.lower() in ["quit", "exit", "q"]:
                 break
-
-            if user_input.startswith("check "):
-                parts = user_input.split(" ", 3)
-                if len(parts) == 4:
-                    _, date, time, party_size = parts
+            
+            # Parse natural language input
+            parsed = await coordinator.parse_natural_language(user_input)
+            
+            if not parsed:
+                print("❌ I didn't understand that. Please try again or type 'quit' to exit.\n")
+                continue
+            
+            if parsed['intent'] == 'check':
+                if not all([parsed['date'], parsed['time'], parsed['party_size']]):
+                    print("❌ Please specify date (YYYY-MM-DD), time (HH:MM), and party size.\n")
+                    continue
+                
+                if parsed['restaurant']:
+                    # Check specific restaurant
+                    restaurants = await coordinator.discover_restaurants()
+                    if parsed['restaurant'] in restaurants:
+                        query = f"Check availability for {parsed['party_size']} people on {parsed['date']} at {parsed['time']}"
+                        response = await coordinator.query_restaurant(restaurants[parsed['restaurant']], query)
+                        print(f"\n📊 {parsed['restaurant']}: {response}\n")
+                    else:
+                        print(f"❌ Restaurant {parsed['restaurant']} is not available.\n")
+                else:
+                    # Check all restaurants
                     result = await coordinator.check_all_availability(
-                        date, time, int(party_size)
+                        parsed['date'], parsed['time'], parsed['party_size']
                     )
                     print(f"\n📊 Results:\n{result}\n")
+            
+            elif parsed['intent'] == 'book':
+                if not all([parsed['restaurant'], parsed['date'], parsed['time'], parsed['party_size'], parsed['customer_name']]):
+                    print("❌ Please specify restaurant, date (YYYY-MM-DD), time (HH:MM), party size, and customer name (first and last name).\n")
+                    continue
+                
+                customer_name = parsed['customer_name']
+                result = await coordinator.book_at_restaurant(
+                    parsed['restaurant'], parsed['date'], parsed['time'], 
+                    parsed['party_size'], customer_name
+                )
+                print(f"\n📊 Booking result:\n{result}\n")
+            
+            elif parsed['intent'] == 'cancel':
+                if not all([parsed['restaurant'], parsed['date'], parsed['time'], parsed['customer_name']]):
+                    print("❌ Please specify restaurant, date (YYYY-MM-DD), time (HH:MM), and customer name to cancel.\n")
+                    continue
+                
+                restaurants = await coordinator.discover_restaurants()
+                if parsed['restaurant'] in restaurants:
+                    query = f"Cancel booking for {parsed['customer_name']} on {parsed['date']} at {parsed['time']}"
+                    response = await coordinator.query_restaurant(restaurants[parsed['restaurant']], query)
+                    print(f"\n📊 Cancellation result:\n{response}\n")
                 else:
-                    print("❌ Usage: check YYYY-MM-DD HH:MM party_size\n")
-
-            elif user_input.startswith("book "):
-                parts = user_input.split(" ", 5)
-                if len(parts) == 6:
-                    _, restaurant, date, time, party_size, customer_name = parts
-                    result = await coordinator.book_at_restaurant(
-                        restaurant, date, time, int(party_size), customer_name
-                    )
-                    print(f"\n📊 Booking result:\n{result}\n")
-                else:
-                    print(
-                        "❌ Usage: book RestaurantName YYYY-MM-DD HH:MM party_size CustomerName\n"
-                    )
-                    # Show available restaurants
-                    fresh_restaurants = await coordinator.discover_restaurants()
-                    if fresh_restaurants:
-                        print(
-                            "Available restaurants:",
-                            ", ".join(fresh_restaurants.keys()),
-                        )
-
-            else:
-                print("❌ Unknown command. Use 'check', 'book', or 'quit'\n")
-
+                    print(f"❌ Restaurant {parsed['restaurant']} is not available.\n")
+        
         except KeyboardInterrupt:
             break
         except Exception as e:
