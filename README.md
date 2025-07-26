@@ -16,7 +16,7 @@ The system demonstrates true cross-framework agent communication:
 
 ### **2-1. Architecture & Key Concepts**
 
-<img width="549" height="520" alt="Image" src="https://github.com/user-attachments/assets/7776d750-7186-4bd7-acc6-dd49169b7a99" />
+<img width="745" height="682" alt="Image" src="https://github.com/user-attachments/assets/956d40d9-b69d-4c67-a099-ab3614331980" />
 
 **Agent Cards**: Self-describing metadata that agents expose at `/.well-known/agent.json`:
 ```json
