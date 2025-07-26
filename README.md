@@ -260,6 +260,7 @@ response = await coordinator.invoke_async(
 - Python 3.11+
 - uv package manager: `pip install uv`
 - AWS credentials for Strands Agents SDK
+- Enable the model you want to use (default is Claude Sonnet 4) in AWS Bedrock
 - Google AI API key for LangGraph and Google ADK agents
 
 ### **Installation**
