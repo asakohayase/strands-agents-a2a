@@ -322,7 +322,7 @@ class TokyoRamenAgentExecutor(AgentExecutor):
         if not context.current_task:
             await updater.submit()
 
-        # Start processing - FIXED: Added await
+        # Start processing
         await updater.start_work()
 
         # Extract user query from A2A message parts

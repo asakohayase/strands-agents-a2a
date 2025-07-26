@@ -8,7 +8,9 @@ from a2a.client import A2ACardResolver, A2AClient
 from a2a.types import MessageSendParams, SendMessageRequest
 from tools.restaurant_tools import check_availability, book_restaurant, cancel_booking, set_coordinator
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('a2a.client.client').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
