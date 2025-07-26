@@ -8,15 +8,15 @@ A demonstration project showcasing **Agent-to-Agent (A2A) protocol** through a c
 
 The system demonstrates true cross-framework agent communication:
 - **Coordinator Agent**: Strands-powered with intelligent tool selection
-- **Sushi Maru**: Strands Agents framework
+- **Sushi Maru**: Strands Agents
 - **Tokyo Ramen**: LangGraph + Gemini
 - **Takoyaki Taro**: Google ADK + Gemini
 
 ## **2. A2A Protocol Overview**
 
-### **2-1. Key Concepts**
+### **2-1. Architecture & Key Concepts**
 
-**Agent Cards**: Each A2A agent exposes a standardized metadata endpoint at `/.well-known/agent.json`:
+**Agent Cards**: Self-describing metadata that agents expose at `/.well-known/agent.json`:
 ```json
 {
   "name": "Sushi Maru Restaurant Agent",
@@ -33,7 +33,27 @@ The system demonstrates true cross-framework agent communication:
 }
 ```
 
-**Message Protocol**: Standardized request/response format across all frameworks:
+**Agent Executor**: The runtime component that:
+- Processes incoming A2A messages
+- Routes requests to appropriate agent skills/tools
+- Handles message serialization/deserialization
+- Manages agent lifecycle and state
+
+**Communication Transport**: A2A uses **HTTP/HTTPS** as the transport layer:
+- RESTful endpoints for agent discovery (`/.well-known/agent.json`)
+- POST requests for message exchange
+- Standard HTTP status codes for error handling
+- JSON payload format for cross-platform compatibility
+
+**Agent Registry**: While not centralized, agents discover each other through:
+- Known endpoint URLs (as in this demo)
+- Service discovery mechanisms
+- Agent card metadata exchange
+- Network topology awareness
+
+### **2-2. Message Protocol**
+
+Standardized request/response format across all frameworks:
 ```python
 request = SendMessageRequest(
     id=str(uuid4()),
@@ -47,9 +67,7 @@ request = SendMessageRequest(
 )
 ```
 
-**Agent Card Retrieval**: Clients fetch agent capabilities from known endpoints via `/.well-known/agent.json`.
-
-### **2-2. A2A Protocol Implementation**
+### **2-3. A2A Protocol Implementation**
 
 **A2A Server (Strands Implementation)**:
 ```python
@@ -176,7 +194,7 @@ agent = Agent(
 
 - **Cross-Framework Communication**: Agents built on different frameworks (Strands, LangGraph, Google ADK) communicate seamlessly
 - **Standardized A2A Protocol**: Consistent interface regardless of underlying agent framework
-- **Agent Discovery**: Automatic discovery of agent capabilities via standardized endpoints
+- **Agent Card Retrieval**: Fetch agent capabilities from known endpoints
 - **Tool-Based Intelligence**: Strands coordinator agent intelligently selects appropriate tools
 
 ## **4. Current Implementation vs Ideal Strands A2A Tools**
@@ -297,25 +315,7 @@ The system supports natural language requests:
 👤 Request: Cancel booking at Sushi Maru for John Smith on 2025-07-25 at 20:00
 ```
 
-## **7. Project Structure**
-```
-strands-agents-a2a/
-├── tools/
-│   ├── __init__.py
-│   └── restaurant_tools.py    # A2A client tools
-├── customer_coordinator.py    # Main coordinator agent
-├── sushi_maru_agent.py       # Strands framework agent
-├── tokyo_ramen_agent.py      # LangGraph framework agent  
-├── takoyaki_taro_agent.py    # Google ADK framework agent
-├── setup_databases.py        # Database initialization
-├── *.db                      # SQLite databases
-├── .env                      # Environment variables
-├── pyproject.toml
-├── requirements.txt
-└── README.md
-```
-
-## **8. Extending the Demo**
+## **7. Extending the Demo**
 
 Additional features that can be added:
 - **Payment Processing** - integrate payment agents via A2A
@@ -328,7 +328,8 @@ Other enhancements:
 - **Agent Load Balancing** - distribute requests across multiple instances
 - **Monitoring Dashboard** - track A2A communication metrics
 
-## **9. Links**
+## **8. Links**
+- **A2A Protocol Official Documentation:** https://a2a-protocol.org/latest/
 - **Strands Agents SDK:** https://strandsagents.com/
-- **A2A Protocol Documentation:** https://strandsagents.com/1.0.x/documentation/docs/user-guide/concepts/multi-agent/agent-to-agent/
+- **Strands A2A Implementation:** https://strandsagents.com/1.0.x/documentation/docs/user-guide/concepts/multi-agent/agent-to-agent/
 - **Multi-Agent Examples:** https://github.com/strands-agents/
