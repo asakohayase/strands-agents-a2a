@@ -24,7 +24,7 @@ Step2: Task Execution
 <img width="829" height="400" alt="Image" src="https://github.com/user-attachments/assets/c6f52818-2700-4d19-b2ac-f4e43b29d3e7" />
 
 **Agent Cards**: Self-describing metadata that agents expose at `/.well-known/agent.json`:
-```json
+```python
 agent_card = AgentCard(
     name="Tokyo Ramen Restaurant Agent",
     description="Restaurant booking agent for Tokyo Ramen, fast casual Japanese ramen",
