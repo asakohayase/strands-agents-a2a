@@ -15,24 +15,24 @@ The system demonstrates true cross-framework agent communication:
 ## **2. A2A Protocol Overview**
 
 ### **2-1. Architecture & Key Concepts**
+Step1: Agent Discovery
+<img width="823" height="391" alt="Image" src="https://github.com/user-attachments/assets/0e11fef0-7561-4c45-887b-e9130ccd912e" />
 
-<img width="745" height="682" alt="Image" src="https://github.com/user-attachments/assets/956d40d9-b69d-4c67-a099-ab3614331980" />
+Step2: Task Execution
+<img width="829" height="400" alt="Image" src="https://github.com/user-attachments/assets/c6f52818-2700-4d19-b2ac-f4e43b29d3e7" />
 
 **Agent Cards**: Self-describing metadata that agents expose at `/.well-known/agent.json`:
 ```json
-{
-  "name": "Sushi Maru Restaurant Agent",
-  "description": "Restaurant booking agent for Sushi Maru",
-  "protocolVersion": "0.2.6",
-  "capabilities": {"streaming": true},
-  "skills": [
-    {
-      "id": "check_availability",
-      "name": "check_availability", 
-      "description": "Check if a table is available for the given date, time, and party size"
-    }
-  ]
-}
+    agent_card = AgentCard(
+        name="Tokyo Ramen Restaurant Agent",
+        description="Restaurant booking agent for Tokyo Ramen, fast casual Japanese ramen",
+        url="http://localhost:9002",
+        version="1.0.0",
+        defaultInputModes=["text"],
+        defaultOutputModes=["text"],
+        capabilities=AgentCapabilities(streaming=True),  # Support streaming
+        skills=[check_skill, book_skill],
+    )
 ```
 
 **Agent Executor**: The runtime component that:
@@ -47,7 +47,7 @@ The system demonstrates true cross-framework agent communication:
 - Standard HTTP status codes for error handling
 - JSON payload format for cross-platform compatibility
 
-**Agent Registry**: Agents discover each other through:
+**Agent Discovery**: Agents discover each other through:
 - Known endpoint URLs (as in this demo)
 - Service discovery mechanisms
 - Agent card metadata exchange
