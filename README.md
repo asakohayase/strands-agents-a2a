@@ -2,7 +2,7 @@
 
 ### Strands Agents SDK Demo: Agent-to-Agent (A2A) Communication
 
-A demonstration project showcasing **Agent-to-Agent (A2A) protocol** through a cross-framework restaurant booking system. This project uses the Strands Agents SDK as the coordinator while communicating with agents built on different frameworks via the standardized A2A protocol. This project implements a coordinator agent that communicates with restaurant agents built on different frameworks (Strands, LangGraph, Google ADK) using the standardized A2A protocol.
+> A demonstration project showcasing **Agent-to-Agent (A2A) protocol** through a cross-framework restaurant booking system. This project uses the Strands Agents SDK as the coordinator while communicating with agents built on different frameworks via the standardized A2A protocol. This project implements a coordinator agent that communicates with restaurant agents built on different frameworks (Strands, LangGraph, Google ADK) using the standardized A2A protocol.
 
 ## **1. Agent Architecture Diagram**
 
